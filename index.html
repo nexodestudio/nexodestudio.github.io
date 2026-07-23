@@ -3,31 +3,127 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mi Página Web</title>
+    <title>Lluvia de Partículas</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #1e1e2e;
-            color: #ffffff;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+        /* 1. Estilos Básicos para que ocupe toda la pantalla */
+        body, html {
             margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* Evita barras de desplazamiento */
+            background-color: #050509; /* Un fondo azul marino muy oscuro */
         }
-        .container {
-            text-align: center;
-            padding: 2rem;
-            background-color: #2b2b3b;
-            border-radius: 10px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+
+        /* 2. El lienzo (Canvas) donde dibujaremos */
+        canvas {
+            display: block;
+        }
+
+        /* 3. Título superpuesto (opcional) */
+        .titulo {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255, 255, 255, 0.2); /* Muy sutil */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 2rem;
+            letter-spacing: 5px;
+            pointer-events: none; /* Para que no interfiera si haces clic */
+            text-transform: uppercase;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>¡Hola mundo! 🚀</h1>
-        <p>Mi primera página alojada en GitHub Pages.</p>
-    </div>
+
+    <h1 class="titulo">Relájate</h1>
+    <canvas id="lienzoLluvia"></canvas>
+
+    <script>
+        // --- CONFIGURACIÓN DE JAVASCRIPT ---
+
+        const canvas = document.getElementById('lienzoLluvia');
+        const ctx = canvas.getContext('2d');
+
+        // Ajustar el canvas al tamaño de la ventana
+        function ajustarCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        ajustarCanvas();
+        window.addEventListener('resize', ajustarCanvas); // Reajustar si cambian el tamaño de la ventana
+
+        // --- CLASE GOTA (Objeto) ---
+        class Gota {
+            constructor() {
+                this.iniciar();
+            }
+
+            // Define las propiedades iniciales de cada gota
+            iniciar() {
+                this.x = Math.random() * canvas.width; // Posición X aleatoria
+                this.y = Math.random() * -canvas.height; // Empieza arriba, fuera de la vista
+                this.velocidad = Math.random() * 5 + 2; // Velocidad de caída aleatoria (entre 2 y 7)
+                this.longitud = Math.random() * 15 + 10; // Largo de la gota
+                this.ancho = Math.random() * 1 + 0.5; // Grosor
+                // Color azul sutil con transparencia aleatoria
+                this.color = `rgba(173, 216, 230, ${Math.random() * 0.5 + 0.2})`; 
+            }
+
+            // Actualiza la posición para moverla
+            actualizar() {
+                this.y += this.velocidad;
+
+                // Si la gota llega al final, la "reiniciamos" arriba
+                if (this.y > canvas.height) {
+                    this.iniciar();
+                    this.y = -this.longitud; // Justo arriba del borde superior
+                }
+            }
+
+            // Dibuja la gota en el canvas
+            dibujar() {
+                ctx.beginPath();
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = this.ancho;
+                ctx.lineCap = 'round'; // Puntas redondeadas para que parezca más líquida
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(this.x, this.y + this.longitud); // Dibuja una línea vertical
+                ctx.stroke();
+            }
+        }
+
+        // --- SISTEMA DE PARTÍCULAS ---
+        const totalGotas = 150; // Cantidad de gotas simultáneas
+        const arregloGotas = [];
+
+        // Crear todas las gotas inicialmente
+        for (let i = 0; i < totalGotas; i++) {
+            arregloGotas.push(new Gota());
+        }
+
+        // --- BUCLE DE ANIMACIÓN (El corazón del efecto) ---
+        function animar() {
+            // 1. Limpiar el frame anterior (pero con un truco de estela)
+            // Usamos un rectángulo negro muy transparente en lugar de borrar todo,
+            // esto crea un efecto de 'trail' o estela sutil detrás de las gotas.
+            ctx.fillStyle = 'rgba(5, 5, 9, 0.3)'; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 2. Actualizar y dibujar cada gota
+            for (let i = 0; i < arregloGotas.length; i++) {
+                arregloGotas[i].actualizar();
+                arregloGotas[i].dibujar();
+            }
+
+            // 3. Llamar al siguiente frame
+            requestAnimationFrame(animar);
+        }
+
+        // Iniciar la animación
+        animar();
+
+    </script>
 </body>
 </html>
