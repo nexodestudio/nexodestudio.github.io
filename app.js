@@ -1,8 +1,4 @@
 (() => {
-  /**
-   * Resuelve una ruta relativa de forma dinámica respecto a la base actual
-   * (funciona igual en local y en GitHub Pages, sin depender de C:\... ni de "main\").
-   */
   function resolveAsset(relativePath) {
     return new URL(relativePath, document.baseURI).href;
   }
@@ -34,61 +30,74 @@
 
   const toggleBtn = document.getElementById("cube-toggle");
   const panel = document.getElementById("side-panel");
+  const socialBar = document.querySelector(".social-bar");
 
   if (!panel) return;
 
-  let isMobileOpen = false;
-  let isDesktopHovered = false;
+  const isMobileViewport = () =>
+    window.matchMedia("(hover: none) and (pointer: coarse), (max-width: 768px)").matches;
+
+  let isLockedOpen = false;
+  let isHovered = false;
 
   function syncUI() {
-    panel.classList.toggle("is-open", isMobileOpen);
-    document.body.classList.toggle("panel-open", isMobileOpen || isDesktopHovered);
+    const mobile = isMobileViewport();
+    const shouldShowSocial = isLockedOpen || (!mobile && isHovered);
+
+    panel.classList.toggle("is-locked", isLockedOpen);
+    panel.classList.toggle("is-open", mobile && isLockedOpen);
+    document.body.classList.toggle("panel-open", shouldShowSocial);
 
     if (toggleBtn) {
-      toggleBtn.classList.toggle("is-hidden", isMobileOpen);
-      toggleBtn.setAttribute("aria-expanded", String(isMobileOpen));
+      toggleBtn.classList.toggle("is-hidden", isLockedOpen);
+      toggleBtn.setAttribute("aria-expanded", String(isLockedOpen));
     }
   }
 
+  // En PC: al abrir el panel (hover o clic en él), se queda bloqueado abierto
   panel.addEventListener("pointerenter", (e) => {
-    if (e.pointerType === "touch") return;
-    isDesktopHovered = true;
+    if (e.pointerType === "touch" || isMobileViewport()) return;
+    isHovered = true;
+    isLockedOpen = true;
     syncUI();
   });
 
   panel.addEventListener("pointerleave", (e) => {
-    if (e.pointerType === "touch") return;
-    isDesktopHovered = false;
+    if (e.pointerType === "touch" || isMobileViewport()) return;
+    isHovered = false;
     syncUI();
   });
 
-  panel.addEventListener("focusin", () => {
-    isDesktopHovered = true;
-    syncUI();
-  });
-
-  panel.addEventListener("focusout", (e) => {
-    if (!panel.contains(e.relatedTarget)) {
-      isDesktopHovered = false;
+  panel.addEventListener("click", () => {
+    if (!isLockedOpen) {
+      isLockedOpen = true;
       syncUI();
     }
   });
 
+  // Botón cúbico en móvil abre el panel completo
   if (toggleBtn) {
     toggleBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      isMobileOpen = !isMobileOpen;
+      isLockedOpen = !isLockedOpen;
       syncUI();
     });
   }
 
+  // Cerrar solo al hacer clic/toque fuera del panel y fuera de los botones sociales
   document.addEventListener("pointerdown", (e) => {
-    if (!isMobileOpen) return;
-    if (!panel.contains(e.target) && (!toggleBtn || !toggleBtn.contains(e.target))) {
-      isMobileOpen = false;
+    if (!isLockedOpen) return;
+    const clickedInsidePanel = panel.contains(e.target);
+    const clickedToggle = toggleBtn && toggleBtn.contains(e.target);
+    const clickedSocial = socialBar && socialBar.contains(e.target);
+
+    if (!clickedInsidePanel && !clickedToggle && !clickedSocial) {
+      isLockedOpen = false;
+      isHovered = false;
       syncUI();
     }
   });
 
+  window.addEventListener("resize", syncUI);
   syncUI();
 })();
