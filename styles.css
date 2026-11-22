@@ -88,6 +88,10 @@ body {
               border-color 0.25s ease;
 }
 
+.side-panel.is-dragging {
+  transition: none !important;
+}
+
 /* En PC: se abre al pasar el mouse o al quedar bloqueado (.is-locked) */
 .side-panel:hover,
 .side-panel:focus-within,
@@ -190,7 +194,7 @@ body.panel-open .social-btn:focus-visible {
   display: block;
 }
 
-/* Móviles: panel a pantalla completa, logo bien visible y botones encima del panel */
+/* Móviles: panel a pantalla completa, deslizable a la izquierda, logo visible y botones encima */
 @media (hover: none) and (pointer: coarse), (max-width: 768px) {
   .cube-btn {
     display: flex;
@@ -201,6 +205,7 @@ body.panel-open .social-btn:focus-visible {
     z-index: 20;
     background: rgba(18, 15, 32, 0.82);
     border-right: none;
+    touch-action: pan-y;
     transform: translateX(-100%);
   }
 
