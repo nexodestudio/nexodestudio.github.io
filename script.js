@@ -1,126 +1,269 @@
-const fragmentShaderSource = `
-    #ifdef GL_FRAGMENT_PRECISION_HIGH
-      precision highp float;
-    #else
-      precision mediump float;
-    #endif
+(() => {
+  const TEXTURE_URL = "./water.jpg";
 
+  const canvas = document.getElementById("glcanvas");
+  const fallbackEl = document.getElementById("fallback-msg");
+
+  const gl =
+    canvas.getContext("webgl", { alpha: false, antialias: true }) ||
+    canvas.getContext("experimental-webgl", { alpha: false, antialias: true });
+
+  function showStatus(text) {
+    if (!fallbackEl) return;
+    fallbackEl.textContent = text;
+    fallbackEl.hidden = false;
+  }
+
+  if (!gl) {
+    showStatus("WebGL no disponible en este navegador.");
+    return;
+  }
+
+  const vertexShaderSource = `
+    attribute vec2 a_position;
+    varying vec2 v_uv;
+
+    void main() {
+      v_uv = a_position * 0.5 + 0.5;
+      gl_Position = vec4(a_position, 0.0, 1.0);
+    }
+  `;
+
+  const fragmentShaderSource = `
+    precision mediump float;
+
+    varying vec2 v_uv;
+
+    uniform sampler2D u_tex;
+    uniform float u_hasTex;
     uniform vec2 u_resolution;
     uniform float u_time;
     uniform vec2 u_mouse;
 
-    float hash(vec2 p) {
-      p = fract(p * vec2(127.1, 311.7));
-      p += dot(p, p + 34.23);
-      return fract(p.x * p.y);
-    }
-
-    float noise(vec2 p) {
-      vec2 i = floor(p);
-      vec2 f = fract(p);
-      vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
-
-      float a = hash(i);
-      float b = hash(i + vec2(1.0, 0.0));
-      float c = hash(i + vec2(0.0, 1.0));
-      float d = hash(i + vec2(1.0, 1.0));
-
-      return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
-    }
-
-    float fbm(vec2 p) {
-      float v = 0.0;
-      float amp = 0.5;
-      mat2 rot = mat2(0.80, 0.60, -0.60, 0.80);
-      for (int i = 0; i < 4; i++) {
-        v += amp * noise(p);
-        p = rot * p * 2.02;
-        amp *= 0.5;
-      }
-      return v;
-    }
-
-    float waterWaves(vec2 p, float t) {
-      float w = 0.0;
-      w += fbm(p * 1.9 + vec2(t * 0.18, -t * 0.14));
-      w += 0.5 * fbm(p * 3.8 - vec2(t * 0.24, t * 0.19));
-      return w;
-    }
-
-    vec2 rotate2D(vec2 v, float a) {
-      float s = sin(a);
-      float c = cos(a);
-      return mat2(c, -s, s, c) * v;
-    }
-
     void main() {
-      float minDim = max(min(u_resolution.x, u_resolution.y), 1.0);
-      vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / minDim;
+      float aspect = u_resolution.x / max(u_resolution.y, 1.0);
+      vec2 centered = (v_uv - 0.5) * vec2(aspect, 1.0);
 
-      vec2 parallax = u_mouse * 0.12;
-      vec2 p = uv + parallax;
+      // Paralaje sutil según puntero / movimiento
+      vec2 parallax = u_mouse * 0.08;
+      vec2 p = centered + parallax;
+
       float t = u_time;
-
       float r = length(p);
 
-      // Olas suaves de la superficie
-      float eps = 0.02;
-      vec2 waveCoord = p * (1.45 + r * 1.8);
-      float h0 = waterWaves(waveCoord, t);
-      float hx = waterWaves(waveCoord + vec2(eps, 0.0), t);
-      float hy = waterWaves(waveCoord + vec2(0.0, eps), t);
-      vec2 normal = clamp(vec2(hx - h0, hy - h0) / eps, -2.0, 2.0);
+      // Coordenadas base escaladas para cubrir bien cualquier orientación (vertical u horizontal)
+      vec2 baseUv = v_uv + parallax * 0.22;
 
-      vec2 refracted = p + normal * 0.032 * smoothstep(0.02, 0.6, r);
-      float rr = length(refracted);
+      // Ondulación suave usando ondas armónicas continuas (sin cortes ni saltos)
+      vec2 wave1 = vec2(
+        sin(p.y * 5.2 + t * 0.75 + cos(p.x * 3.7 - t * 0.5)),
+        cos(p.x * 4.8 - t * 0.68 + sin(p.y * 4.1 + t * 0.55))
+      );
 
-      // Ventana de Snell y núcleo luminoso
-      float sunCore = exp(-rr * rr * 28.0);
-      float snellWindow = smoothstep(0.75, 0.05, rr);
-      float innerHalo = exp(-rr * 3.2);
+      vec2 wave2 = vec2(
+        cos(p.x * 9.5 - p.y * 6.2 + t * 1.15),
+        sin(p.y * 8.8 + p.x * 5.4 - t * 0.95)
+      );
 
-      // Ondas de superficie más suaves
-      float surfaceRipples = smoothstep(0.45, 0.92, h0) * smoothstep(0.85, 0.15, rr);
+      vec2 warp = wave1 * 0.018 + wave2 * 0.008;
 
-      // Rayos volumétricos continuos y suaves (con fbm en lugar de ruido duro)
-      vec2 dir = p / max(r, 0.001);
-      vec2 dir1 = rotate2D(dir, t * 0.05);
-      vec2 dir2 = rotate2D(dir, -t * 0.07);
+      // Muestreo de la imagen con dos capas desplazadas para dar profundidad y movimiento
+      vec2 uvA = baseUv + warp + vec2(t * 0.015, -t * 0.012);
+      vec2 uvB = baseUv * 1.18 - warp * 1.35 + vec2(-t * 0.011, t * 0.016) + vec2(0.37, 0.19);
 
-      float rayFbm1 = fbm(dir1 * 2.4 + vec2(r * 0.6 - t * 0.14));
-      float rayFbm2 = fbm(dir2 * 4.2 - vec2(r * 0.9 - t * 0.20));
-      float rays = pow(clamp(rayFbm1 * 0.65 + rayFbm2 * 0.35, 0.0, 1.0), 2.2);
-      rays *= smoothstep(0.05, 0.28, r) * smoothstep(1.0, 0.18, r);
+      vec3 texA = texture2D(u_tex, fract(uvA)).rgb;
+      vec3 texB = texture2D(u_tex, fract(uvB)).rgb;
 
-      // Partículas suaves
-      vec2 dustUV = uv * 7.5 + parallax * 1.5 + vec2(sin(t * 0.12) * 0.25, -t * 0.07);
-      vec2 dustCell = floor(dustUV);
-      vec2 dustFract = fract(dustUV) - 0.5;
-      float rnd = hash(dustCell);
-      vec2 offset = vec2(hash(dustCell + 11.3), hash(dustCell + 27.9)) - 0.5;
-      float d = length(dustFract - offset * 0.5);
-      float dust = smoothstep(0.08, 0.0, d) * step(0.88, rnd) * smoothstep(0.95, 0.15, r);
+      // Luminancia de la textura como mapa de relieve / cáusticas
+      float lumA = dot(texA, vec3(0.299, 0.587, 0.114));
+      float lumB = dot(texB, vec3(0.299, 0.587, 0.114));
+      float relief = mix(lumA, lumB, 0.5);
 
-      // Paleta del personaje (índigo oscuro, pizarra violáceo y blanco)
+      // Si no hay textura cargada todavía, usar ondas suaves como respaldo
+      float fallbackRelief = 0.5 + 0.25 * sin(p.x * 6.0 + t * 0.8) * cos(p.y * 6.0 - t * 0.7);
+      float pattern = mix(fallbackRelief, relief, u_hasTex);
+
+      // Ventana de Snell / luz filtrándose desde arriba
+      float snellGlow = exp(-r * r * 3.1);
+      float coreLight = exp(-r * r * 22.0);
+      float ringHighlight = smoothstep(0.55, 0.85, pattern) * exp(-r * 1.4);
+
+      // Rayos direccionales suaves centrados en el haz de luz
+      vec2 toCenter = p;
+      float beamAngle = sin(toCenter.x * 7.0 + t * 0.45) * cos(toCenter.y * 5.5 - t * 0.35);
+      float rays = smoothstep(0.15, 0.95, beamAngle) * exp(-r * 1.85) * (0.45 + 0.55 * pattern);
+
+      // Paleta del personaje (índigo oscuro, pizarra violáceo, brillo apagado y luz blanca)
       vec3 deepAbyss = vec3(0.043, 0.039, 0.075);
-      vec3 midOcean  = vec3(0.106, 0.098, 0.169);
-      vec3 shallow   = vec3(0.235, 0.220, 0.375);
-      vec3 sunLight  = vec3(0.945, 0.945, 0.985);
+      vec3 midSlate  = vec3(0.106, 0.098, 0.169);
+      vec3 violetRim = vec3(0.235, 0.220, 0.375);
+      vec3 whiteGlow = vec3(0.950, 0.950, 0.990);
 
       vec3 col = deepAbyss;
-      col = mix(col, midOcean, snellWindow * 0.88);
-      col = mix(col, shallow, innerHalo * 0.82);
-      col += mix(shallow, sunLight, 0.4) * surfaceRipples * 0.45;
-      col += mix(shallow, sunLight, 0.68) * rays * 0.52;
-      col += sunLight * sunCore * 1.25;
-      col += sunLight * dust * 0.3;
+      col = mix(col, midSlate, clamp(snellGlow * 0.95 + pattern * 0.45, 0.0, 1.0));
+      col = mix(col, violetRim, clamp(ringHighlight * 0.85 + snellGlow * 0.35, 0.0, 1.0));
+      col += violetRim * rays * 0.65;
+      col += mix(violetRim, whiteGlow, 0.55) * ringHighlight * 0.45;
+      col += whiteGlow * coreLight * 1.25;
 
-      float vignette = smoothstep(1.3, 0.22, length(uv));
-      col *= mix(0.35, 1.0, vignette);
+      // Viñeta en los bordes
+      float distFromCenter = length((v_uv - 0.5) * vec2(1.15, 1.0));
+      float vignette = smoothstep(1.05, 0.15, distFromCenter);
+      col *= mix(0.25, 1.0, vignette);
 
-      col = col / (1.0 + col * 0.32);
-      col = pow(max(col, vec3(0.0)), vec3(0.94));
-
+      col = col / (1.0 + col * 0.28);
       gl_FragColor = vec4(col, 1.0);
     }
   `;
+
+  function compileShader(type, source) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      console.error("Error en shader:", gl.getShaderInfoLog(shader));
+      showStatus("Error al compilar el shader.");
+      gl.deleteShader(shader);
+      return null;
+    }
+    return shader;
+  }
+
+  const vs = compileShader(gl.VERTEX_SHADER, vertexShaderSource);
+  const fs = compileShader(gl.FRAGMENT_SHADER, fragmentShaderSource);
+  if (!vs || !fs) return;
+
+  const program = gl.createProgram();
+  gl.attachShader(program, vs);
+  gl.attachShader(program, fs);
+  gl.linkProgram(program);
+
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    console.error("Error enlazando programa:", gl.getProgramInfoLog(program));
+    showStatus("Error al enlazar WebGL.");
+    return;
+  }
+
+  gl.useProgram(program);
+
+  const quadBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    new Float32Array([
+      -1, -1,
+       1, -1,
+      -1,  1,
+      -1,  1,
+       1, -1,
+       1,  1,
+    ]),
+    gl.STATIC_DRAW
+  );
+
+  const posLoc = gl.getAttribLocation(program, "a_position");
+  gl.enableVertexAttribArray(posLoc);
+  gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+  const uTex = gl.getUniformLocation(program, "u_tex");
+  const uHasTex = gl.getUniformLocation(program, "u_hasTex");
+  const uResolution = gl.getUniformLocation(program, "u_resolution");
+  const uTime = gl.getUniformLocation(program, "u_time");
+  const uMouse = gl.getUniformLocation(program, "u_mouse");
+
+  // Textura inicial de 1x1 píxel para evitar advertencias antes de que cargue la imagen
+  const texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    1,
+    1,
+    0,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    new Uint8Array([40, 38, 68, 255])
+  );
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+  gl.uniform1i(uTex, 0);
+  gl.uniform1f(uHasTex, 0.0);
+
+  let hasTexture = false;
+
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = () => {
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    hasTexture = true;
+    gl.uniform1f(uHasTex, 1.0);
+  };
+  img.onerror = () => {
+    hasTexture = false;
+    gl.uniform1f(uHasTex, 0.0);
+    showStatus("No se encontró water.jpg en el repo; usando modo shader de respaldo.");
+  };
+  img.src = TEXTURE_URL;
+
+  let targetX = 0;
+  let targetY = 0;
+  let currentX = 0;
+  let currentY = 0;
+
+  window.addEventListener("pointermove", (e) => {
+    targetX = (e.clientX / Math.max(window.innerWidth, 1) - 0.5) * 2.0;
+    targetY = -(e.clientY / Math.max(window.innerHeight, 1) - 0.5) * 2.0;
+  });
+
+  window.addEventListener("pointerleave", () => {
+    targetX = 0;
+    targetY = 0;
+  });
+
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    const w = Math.max(1, Math.floor(window.innerWidth * dpr));
+    const h = Math.max(1, Math.floor(window.innerHeight * dpr));
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+      gl.viewport(0, 0, w, h);
+    }
+  }
+
+  window.addEventListener("resize", resize);
+  resize();
+
+  const startTime = performance.now();
+
+  function render(now) {
+    const elapsed = (now - startTime) * 0.001;
+
+    currentX += (targetX - currentX) * 0.06;
+    currentY += (targetY - currentY) * 0.06;
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+
+    gl.uniform1f(uHasTex, hasTexture ? 1.0 : 0.0);
+    gl.uniform2f(uResolution, canvas.width, canvas.height);
+    gl.uniform1f(uTime, elapsed);
+    gl.uniform2f(uMouse, currentX, currentY);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    requestAnimationFrame(render);
+  }
+
+  requestAnimationFrame(render);
+})();
