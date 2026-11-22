@@ -10,25 +10,11 @@ body {
   height: 100%;
   overflow: hidden;
   background-color: #0e0c17;
+  touch-action: none;
 }
 
 #glcanvas {
   display: block;
   width: 100vw;
   height: 100vh;
-}
-
-.fallback-msg {
-  position: fixed;
-  bottom: 14px;
-  left: 14px;
-  z-index: 20;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  font-size: 12px;
-  color: rgba(238, 247, 252, 0.72);
-  background: rgba(14, 12, 23, 0.75);
-  border: 1px solid rgba(150, 145, 200, 0.25);
-  padding: 6px 10px;
-  border-radius: 6px;
-  pointer-events: none;
 }

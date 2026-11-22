@@ -1,117 +1,158 @@
 (() => {
-  const TEXTURE_URL = "./water.jpg";
-
   const canvas = document.getElementById("glcanvas");
-  const fallbackEl = document.getElementById("fallback-msg");
-
   const gl =
     canvas.getContext("webgl", { alpha: false, antialias: true }) ||
     canvas.getContext("experimental-webgl", { alpha: false, antialias: true });
 
-  function showStatus(text) {
-    if (!fallbackEl) return;
-    fallbackEl.textContent = text;
-    fallbackEl.hidden = false;
-  }
-
   if (!gl) {
-    showStatus("WebGL no disponible en este navegador.");
+    console.error("WebGL no está disponible en este navegador.");
     return;
   }
 
   const vertexShaderSource = `
     attribute vec2 a_position;
-    varying vec2 v_uv;
-
     void main() {
-      v_uv = a_position * 0.5 + 0.5;
       gl_Position = vec4(a_position, 0.0, 1.0);
     }
   `;
 
+  // Shader autónomo: ventana de Snell, cáusticas armónicas continuas y partículas orgánicas dispersas
   const fragmentShaderSource = `
-    precision mediump float;
+    #ifdef GL_FRAGMENT_PRECISION_HIGH
+      precision highp float;
+    #else
+      precision mediump float;
+    #endif
 
-    varying vec2 v_uv;
-
-    uniform sampler2D u_tex;
-    uniform float u_hasTex;
     uniform vec2 u_resolution;
     uniform float u_time;
     uniform vec2 u_mouse;
 
+    float hash12(vec2 p) {
+      vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+      p3 += dot(p3, p3.yzx + 33.33);
+      return fract((p3.x + p3.y) * p3.z);
+    }
+
+    vec2 hash22(vec2 p) {
+      vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+      p3 += dot(p3, p3.yzx + 33.33);
+      return fract((p3.xx + p3.yz) * p3.zy);
+    }
+
+    // Capa de partículas dispersas con posición, tamaño, brillo y deriva aleatoria por celda
+    float dustLayer(vec2 uv, float scale, float t, float density) {
+      vec2 gv = uv * scale;
+      vec2 id = floor(gv);
+      vec2 f = fract(gv) - 0.5;
+
+      float acc = 0.0;
+
+      // Revisar vecindad 3x3 para que las partículas no se corten en los bordes de celda
+      for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+          vec2 offs = vec2(float(x), float(y));
+          vec2 cellId = id + offs;
+
+          float rnd = hash12(cellId);
+          if (rnd > density) continue;
+
+          vec2 randPos = hash22(cellId + 19.37) - 0.5;
+          vec2 drift = vec2(
+            sin(t * (0.35 + rnd * 0.4) + rnd * 6.2831),
+            cos(t * (0.28 + rnd * 0.35) + rnd * 12.566)
+          ) * 0.24;
+
+          vec2 pos = offs + randPos * 0.65 + drift;
+          float d = length(f - pos);
+
+          float radius = mix(0.025, 0.075, hash12(cellId + 7.13));
+          float twinkle = 0.55 + 0.45 * sin(t * (1.2 + rnd * 2.0) + rnd * 18.0);
+          float spot = smoothstep(radius, radius * 0.1, d);
+
+          acc += spot * twinkle * (0.4 + 0.6 * rnd);
+        }
+      }
+
+      return acc;
+    }
+
+    // Patrón orgánico de cáusticas / superficie del agua con ondas continuas
+    float causticsPattern(vec2 p, float t) {
+      vec2 q = p;
+      float acc = 0.0;
+      float amp = 0.55;
+      float freq = 2.1;
+
+      for (int i = 0; i < 4; i++) {
+        float w1 = sin(q.x * freq + t * (0.45 + float(i) * 0.12) + cos(q.y * freq * 0.85 - t * 0.35));
+        float w2 = cos(q.y * freq * 1.1 - t * (0.40 + float(i) * 0.10) + sin(q.x * freq * 0.92 + t * 0.30));
+        float ridge = 1.0 - abs(w1 * 0.65 + w2 * 0.35);
+        acc += pow(clamp(ridge, 0.0, 1.0), 3.0) * amp;
+
+        q = mat2(0.80, 0.60, -0.60, 0.80) * q + vec2(0.37, -0.29);
+        freq *= 1.65;
+        amp *= 0.52;
+      }
+
+      return clamp(acc, 0.0, 1.0);
+    }
+
     void main() {
-      float aspect = u_resolution.x / max(u_resolution.y, 1.0);
-      vec2 centered = (v_uv - 0.5) * vec2(aspect, 1.0);
+      float minDim = max(min(u_resolution.x, u_resolution.y), 1.0);
+      vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / minDim;
 
-      // Paralaje sutil según puntero / movimiento
-      vec2 parallax = u_mouse * 0.08;
-      vec2 p = centered + parallax;
-
+      // Paralaje suave con el puntero o tacto
+      vec2 parallax = u_mouse * 0.11;
+      vec2 p = uv + parallax;
       float t = u_time;
+
       float r = length(p);
 
-      // Coordenadas base escaladas para cubrir bien cualquier orientación (vertical u horizontal)
-      vec2 baseUv = v_uv + parallax * 0.22;
+      // Refracción suave de las olas vistas desde abajo
+      float c1 = causticsPattern(p * (1.15 + r * 0.55), t);
+      float c2 = causticsPattern(p * 1.85 - parallax * 0.5, -t * 0.75 + 2.1);
+      float caustics = clamp(c1 * 0.68 + c2 * 0.45, 0.0, 1.0);
 
-      // Ondulación suave usando ondas armónicas continuas (sin cortes ni saltos)
-      vec2 wave1 = vec2(
-        sin(p.y * 5.2 + t * 0.75 + cos(p.x * 3.7 - t * 0.5)),
-        cos(p.x * 4.8 - t * 0.68 + sin(p.y * 4.1 + t * 0.55))
-      );
+      vec2 refracted = p + vec2(c1 - 0.5, c2 - 0.5) * 0.045 * smoothstep(0.05, 0.75, r);
+      float rr = length(refracted);
 
-      vec2 wave2 = vec2(
-        cos(p.x * 9.5 - p.y * 6.2 + t * 1.15),
-        sin(p.y * 8.8 + p.x * 5.4 - t * 0.95)
-      );
+      // Ventana de Snell y núcleo luminoso superior
+      float snellWindow = smoothstep(0.88, 0.06, rr);
+      float innerGlow = exp(-rr * rr * 4.2);
+      float coreSun = exp(-rr * rr * 26.0);
 
-      vec2 warp = wave1 * 0.018 + wave2 * 0.008;
+      // Rayos suaves filtrándose desde la superficie sin bordes duros
+      float rayWaveA = 0.5 + 0.5 * sin(refracted.x * 6.5 + refracted.y * 2.2 + t * 0.42);
+      float rayWaveB = 0.5 + 0.5 * cos(refracted.x * 4.2 - refracted.y * 5.4 - t * 0.31);
+      float rays = pow(clamp(rayWaveA * 0.55 + rayWaveB * 0.45, 0.0, 1.0), 2.5);
+      rays *= smoothstep(0.04, 0.25, rr) * smoothstep(1.05, 0.15, rr) * (0.45 + 0.55 * caustics);
 
-      // Muestreo de la imagen con dos capas desplazadas para dar profundidad y movimiento
-      vec2 uvA = baseUv + warp + vec2(t * 0.015, -t * 0.012);
-      vec2 uvB = baseUv * 1.18 - warp * 1.35 + vec2(-t * 0.011, t * 0.016) + vec2(0.37, 0.19);
+      // Dos capas de partículas orgánicas dispersas (sin cuadrícula regular)
+      float dustNear = dustLayer(uv + parallax * 1.7 + vec2(0.0, -t * 0.03), 4.2, t, 0.22);
+      float dustFar  = dustLayer(uv + parallax * 1.1 + vec2(0.31, -t * 0.018), 7.5, t * 0.85 + 4.0, 0.18);
+      float dust = (dustNear * 0.85 + dustFar * 0.55) * smoothstep(1.05, 0.12, r);
 
-      vec3 texA = texture2D(u_tex, fract(uvA)).rgb;
-      vec3 texB = texture2D(u_tex, fract(uvB)).rgb;
-
-      // Luminancia de la textura como mapa de relieve / cáusticas
-      float lumA = dot(texA, vec3(0.299, 0.587, 0.114));
-      float lumB = dot(texB, vec3(0.299, 0.587, 0.114));
-      float relief = mix(lumA, lumB, 0.5);
-
-      // Si no hay textura cargada todavía, usar ondas suaves como respaldo
-      float fallbackRelief = 0.5 + 0.25 * sin(p.x * 6.0 + t * 0.8) * cos(p.y * 6.0 - t * 0.7);
-      float pattern = mix(fallbackRelief, relief, u_hasTex);
-
-      // Ventana de Snell / luz filtrándose desde arriba
-      float snellGlow = exp(-r * r * 3.1);
-      float coreLight = exp(-r * r * 22.0);
-      float ringHighlight = smoothstep(0.55, 0.85, pattern) * exp(-r * 1.4);
-
-      // Rayos direccionales suaves centrados en el haz de luz
-      vec2 toCenter = p;
-      float beamAngle = sin(toCenter.x * 7.0 + t * 0.45) * cos(toCenter.y * 5.5 - t * 0.35);
-      float rays = smoothstep(0.15, 0.95, beamAngle) * exp(-r * 1.85) * (0.45 + 0.55 * pattern);
-
-      // Paleta del personaje (índigo oscuro, pizarra violáceo, brillo apagado y luz blanca)
+      // Paleta índigo / pizarra / violeta apagado / luz blanca
       vec3 deepAbyss = vec3(0.043, 0.039, 0.075);
       vec3 midSlate  = vec3(0.106, 0.098, 0.169);
       vec3 violetRim = vec3(0.235, 0.220, 0.375);
       vec3 whiteGlow = vec3(0.950, 0.950, 0.990);
 
       vec3 col = deepAbyss;
-      col = mix(col, midSlate, clamp(snellGlow * 0.95 + pattern * 0.45, 0.0, 1.0));
-      col = mix(col, violetRim, clamp(ringHighlight * 0.85 + snellGlow * 0.35, 0.0, 1.0));
-      col += violetRim * rays * 0.65;
-      col += mix(violetRim, whiteGlow, 0.55) * ringHighlight * 0.45;
-      col += whiteGlow * coreLight * 1.25;
+      col = mix(col, midSlate, clamp(snellWindow * 0.92 + caustics * 0.32, 0.0, 1.0));
+      col = mix(col, violetRim, clamp(innerGlow * 0.72 + caustics * snellWindow * 0.55, 0.0, 1.0));
+      col += mix(violetRim, whiteGlow, 0.45) * caustics * snellWindow * 0.42;
+      col += mix(violetRim, whiteGlow, 0.65) * rays * 0.50;
+      col += whiteGlow * coreSun * 1.25;
+      col += whiteGlow * dust * 0.38;
 
-      // Viñeta en los bordes
-      float distFromCenter = length((v_uv - 0.5) * vec2(1.15, 1.0));
-      float vignette = smoothstep(1.05, 0.15, distFromCenter);
-      col *= mix(0.25, 1.0, vignette);
+      // Viñeta profunda en los bordes
+      float vignette = smoothstep(1.35, 0.22, length(uv));
+      col *= mix(0.30, 1.0, vignette);
 
-      col = col / (1.0 + col * 0.28);
+      // Mapeo tonal suave
+      col = col / (1.0 + col * 0.30);
       gl_FragColor = vec4(col, 1.0);
     }
   `;
@@ -121,8 +162,7 @@
     gl.shaderSource(shader, source);
     gl.compileShader(shader);
     if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-      console.error("Error en shader:", gl.getShaderInfoLog(shader));
-      showStatus("Error al compilar el shader.");
+      console.error("Error compilando shader:", gl.getShaderInfoLog(shader));
       gl.deleteShader(shader);
       return null;
     }
@@ -139,15 +179,14 @@
   gl.linkProgram(program);
 
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    console.error("Error enlazando programa:", gl.getProgramInfoLog(program));
-    showStatus("Error al enlazar WebGL.");
+    console.error("Error enlazando programa WebGL:", gl.getProgramInfoLog(program));
     return;
   }
 
   gl.useProgram(program);
 
-  const quadBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+  const positionBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
   gl.bufferData(
     gl.ARRAY_BUFFER,
     new Float32Array([
@@ -161,84 +200,42 @@
     gl.STATIC_DRAW
   );
 
-  const posLoc = gl.getAttribLocation(program, "a_position");
-  gl.enableVertexAttribArray(posLoc);
-  gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+  const posAttrib = gl.getAttribLocation(program, "a_position");
+  gl.enableVertexAttribArray(posAttrib);
+  gl.vertexAttribPointer(posAttrib, 2, gl.FLOAT, false, 0, 0);
 
-  const uTex = gl.getUniformLocation(program, "u_tex");
-  const uHasTex = gl.getUniformLocation(program, "u_hasTex");
   const uResolution = gl.getUniformLocation(program, "u_resolution");
   const uTime = gl.getUniformLocation(program, "u_time");
   const uMouse = gl.getUniformLocation(program, "u_mouse");
 
-  // Textura inicial de 1x1 píxel para evitar advertencias antes de que cargue la imagen
-  const texture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.RGBA,
-    1,
-    1,
-    0,
-    gl.RGBA,
-    gl.UNSIGNED_BYTE,
-    new Uint8Array([40, 38, 68, 255])
-  );
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  let targetMouseX = 0;
+  let targetMouseY = 0;
+  let currentMouseX = 0;
+  let currentMouseY = 0;
 
-  gl.uniform1i(uTex, 0);
-  gl.uniform1f(uHasTex, 0.0);
-
-  let hasTexture = false;
-
-  const img = new Image();
-  img.crossOrigin = "anonymous";
-  img.onload = () => {
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
-    hasTexture = true;
-    gl.uniform1f(uHasTex, 1.0);
-  };
-  img.onerror = () => {
-    hasTexture = false;
-    gl.uniform1f(uHasTex, 0.0);
-    showStatus("No se encontró water.jpg en el repo; usando modo shader de respaldo.");
-  };
-  img.src = TEXTURE_URL;
-
-  let targetX = 0;
-  let targetY = 0;
-  let currentX = 0;
-  let currentY = 0;
+  function updatePointer(clientX, clientY) {
+    targetMouseX = (clientX / Math.max(window.innerWidth, 1) - 0.5) * 2.0;
+    targetMouseY = -(clientY / Math.max(window.innerHeight, 1) - 0.5) * 2.0;
+  }
 
   window.addEventListener("pointermove", (e) => {
-    targetX = (e.clientX / Math.max(window.innerWidth, 1) - 0.5) * 2.0;
-    targetY = -(e.clientY / Math.max(window.innerHeight, 1) - 0.5) * 2.0;
+    updatePointer(e.clientX, e.clientY);
   });
 
   window.addEventListener("pointerleave", () => {
-    targetX = 0;
-    targetY = 0;
+    targetMouseX = 0;
+    targetMouseY = 0;
   });
 
   function resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-    const w = Math.max(1, Math.floor(window.innerWidth * dpr));
-    const h = Math.max(1, Math.floor(window.innerHeight * dpr));
-    if (canvas.width !== w || canvas.height !== h) {
-      canvas.width = w;
-      canvas.height = h;
-      gl.viewport(0, 0, w, h);
+    const width = Math.max(1, Math.floor(window.innerWidth * dpr));
+    const height = Math.max(1, Math.floor(window.innerHeight * dpr));
+
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+      gl.viewport(0, 0, width, height);
     }
   }
 
@@ -250,16 +247,12 @@
   function render(now) {
     const elapsed = (now - startTime) * 0.001;
 
-    currentX += (targetX - currentX) * 0.06;
-    currentY += (targetY - currentY) * 0.06;
+    currentMouseX += (targetMouseX - currentMouseX) * 0.06;
+    currentMouseY += (targetMouseY - currentMouseY) * 0.06;
 
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-
-    gl.uniform1f(uHasTex, hasTexture ? 1.0 : 0.0);
     gl.uniform2f(uResolution, canvas.width, canvas.height);
     gl.uniform1f(uTime, elapsed);
-    gl.uniform2f(uMouse, currentX, currentY);
+    gl.uniform2f(uMouse, currentMouseX, currentMouseY);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     requestAnimationFrame(render);
