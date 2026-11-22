@@ -1,129 +1,93 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lluvia de Partículas</title>
-    <style>
-        /* 1. Estilos Básicos para que ocupe toda la pantalla */
-        body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden; /* Evita barras de desplazamiento */
-            background-color: #050509; /* Un fondo azul marino muy oscuro */
-        }
-
-        /* 2. El lienzo (Canvas) donde dibujaremos */
-        canvas {
-            display: block;
-        }
-
-        /* 3. Título superpuesto (opcional) */
-        .titulo {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: rgba(255, 255, 255, 0.2); /* Muy sutil */
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            font-size: 2rem;
-            letter-spacing: 5px;
-            pointer-events: none; /* Para que no interfiera si haces clic */
-            text-transform: uppercase;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Null — NexodeStudios</title>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
+  <nav class="topbar">
+    <div class="container topbar-inner">
+      <a class="brand-link" href="https://nexodestudio.github.io" rel="noopener noreferrer">
+        ← NexodeStudios
+      </a>
+      <div class="nav-links">
+        <a href="#sobre">Sobre el juego</a>
+        <a href="#descargar">Descargar</a>
+      </div>
+    </div>
+  </nav>
 
-    <h1 class="titulo">Relájate</h1>
-    <canvas id="lienzoLluvia"></canvas>
+  <main class="underwater-main" id="underwater-scene">
+    <!-- Capa profunda: degradado acuático y halo de superficie -->
+    <div class="layer layer-water" data-depth="0.15"></div>
 
-    <script>
-        // --- CONFIGURACIÓN DE JAVASCRIPT ---
+    <!-- Capa de rayos solares dinámicos -->
+    <div class="layer layer-rays" data-depth="0.35" aria-hidden="true">
+      <span class="sun-ray ray-1"></span>
+      <span class="sun-ray ray-2"></span>
+      <span class="sun-ray ray-3"></span>
+      <span class="sun-ray ray-4"></span>
+      <span class="sun-ray ray-5"></span>
+    </div>
 
-        const canvas = document.getElementById('lienzoLluvia');
-        const ctx = canvas.getContext('2d');
+    <!-- Ondulación sutil de la superficie vista desde abajo -->
+    <div class="layer layer-surface" data-depth="0.55" aria-hidden="true"></div>
 
-        // Ajustar el canvas al tamaño de la ventana
-        function ajustarCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-        ajustarCanvas();
-        window.addEventListener('resize', ajustarCanvas); // Reajustar si cambian el tamaño de la ventana
+    <!-- Partículas / burbujas flotantes generadas en JS -->
+    <div class="layer layer-particles" data-depth="0.8" id="particles-layer" aria-hidden="true"></div>
 
-        // --- CLASE GOTA (Objeto) ---
-        class Gota {
-            constructor() {
-                this.iniciar();
-            }
+    <!-- Viñeta para mantener alto contraste en el texto -->
+    <div class="vignette" aria-hidden="true"></div>
 
-            // Define las propiedades iniciales de cada gota
-            iniciar() {
-                this.x = Math.random() * canvas.width; // Posición X aleatoria
-                this.y = Math.random() * -canvas.height; // Empieza arriba, fuera de la vista
-                this.velocidad = Math.random() * 5 + 2; // Velocidad de caída aleatoria (entre 2 y 7)
-                this.longitud = Math.random() * 15 + 10; // Largo de la gota
-                this.ancho = Math.random() * 1 + 0.5; // Grosor
-                // Color azul sutil con transparencia aleatoria
-                this.color = `rgba(173, 216, 230, ${Math.random() * 0.5 + 0.2})`; 
-            }
+    <!-- Contenido principal flotando en la escena -->
+    <div class="container hero-content" data-depth="0.25">
+      <span class="badge">Versión 0.0.3-InDev</span>
+      <h1>Null</h1>
+      <p class="subtitle">
+        Una experiencia atmosférica desarrollada por <strong>NexodeStudios, Inc.</strong>
+        Explora lo que ocurre bajo la superficie.
+      </p>
+      <div class="actions">
+        <a class="btn primary" href="#descargar">Ir a descarga</a>
+        <a class="btn secondary" href="https://nexodestudio.itch.io/null-0" target="_blank" rel="noopener noreferrer">
+          Página en itch.io
+        </a>
+      </div>
+    </div>
+  </main>
 
-            // Actualiza la posición para moverla
-            actualizar() {
-                this.y += this.velocidad;
+  <section id="sobre" class="section container">
+    <article class="card">
+      <h2>Sobre Null</h2>
+      <p>
+        Aquí puedes escribir la premisa del juego, mecánicas principales y novedades
+        de esta compilación en desarrollo.
+      </p>
+    </article>
+  </section>
 
-                // Si la gota llega al final, la "reiniciamos" arriba
-                if (this.y > canvas.height) {
-                    this.iniciar();
-                    this.y = -this.longitud; // Justo arriba del borde superior
-                }
-            }
+  <section id="descargar" class="section container">
+    <article class="card">
+      <h2>Descargas y compilaciones</h2>
+      <p>
+        Descarga el juego desde itch.io o publica tus instaladores y paquetes en
+        las releases de tu repositorio para mantener la web ligera.
+      </p>
+      <a class="btn primary" href="https://nexodestudio.itch.io/null-0" target="_blank" rel="noopener noreferrer">
+        Descargar en itch.io
+      </a>
+    </article>
+  </section>
 
-            // Dibuja la gota en el canvas
-            dibujar() {
-                ctx.beginPath();
-                ctx.strokeStyle = this.color;
-                ctx.lineWidth = this.ancho;
-                ctx.lineCap = 'round'; // Puntas redondeadas para que parezca más líquida
-                ctx.moveTo(this.x, this.y);
-                ctx.lineTo(this.x, this.y + this.longitud); // Dibuja una línea vertical
-                ctx.stroke();
-            }
-        }
+  <footer class="footer container">
+    <p>
+      NexodeStudios, Inc. ·
+      <a href="https://nexodestudio.github.io">Inicio del estudio</a>
+    </p>
+  </footer>
 
-        // --- SISTEMA DE PARTÍCULAS ---
-        const totalGotas = 150; // Cantidad de gotas simultáneas
-        const arregloGotas = [];
-
-        // Crear todas las gotas inicialmente
-        for (let i = 0; i < totalGotas; i++) {
-            arregloGotas.push(new Gota());
-        }
-
-        // --- BUCLE DE ANIMACIÓN (El corazón del efecto) ---
-        function animar() {
-            // 1. Limpiar el frame anterior (pero con un truco de estela)
-            // Usamos un rectángulo negro muy transparente en lugar de borrar todo,
-            // esto crea un efecto de 'trail' o estela sutil detrás de las gotas.
-            ctx.fillStyle = 'rgba(5, 5, 9, 0.3)'; 
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // 2. Actualizar y dibujar cada gota
-            for (let i = 0; i < arregloGotas.length; i++) {
-                arregloGotas[i].actualizar();
-                arregloGotas[i].dibujar();
-            }
-
-            // 3. Llamar al siguiente frame
-            requestAnimationFrame(animar);
-        }
-
-        // Iniciar la animación
-        animar();
-
-    </script>
+  <script src="./script.js"></script>
 </body>
 </html>
