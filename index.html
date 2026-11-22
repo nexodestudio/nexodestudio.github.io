@@ -3,91 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Null — NexodeStudios</title>
+  <title>Null</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <nav class="topbar">
-    <div class="container topbar-inner">
-      <a class="brand-link" href="https://nexodestudio.github.io" rel="noopener noreferrer">
-        ← NexodeStudios
-      </a>
-      <div class="nav-links">
-        <a href="#sobre">Sobre el juego</a>
-        <a href="#descargar">Descargar</a>
-      </div>
-    </div>
-  </nav>
-
-  <main class="underwater-main" id="underwater-scene">
-    <!-- Capa profunda: degradado acuático y halo de superficie -->
-    <div class="layer layer-water" data-depth="0.15"></div>
-
-    <!-- Capa de rayos solares dinámicos -->
-    <div class="layer layer-rays" data-depth="0.35" aria-hidden="true">
-      <span class="sun-ray ray-1"></span>
-      <span class="sun-ray ray-2"></span>
-      <span class="sun-ray ray-3"></span>
-      <span class="sun-ray ray-4"></span>
-      <span class="sun-ray ray-5"></span>
-    </div>
-
-    <!-- Ondulación sutil de la superficie vista desde abajo -->
-    <div class="layer layer-surface" data-depth="0.55" aria-hidden="true"></div>
-
-    <!-- Partículas / burbujas flotantes generadas en JS -->
-    <div class="layer layer-particles" data-depth="0.8" id="particles-layer" aria-hidden="true"></div>
-
-    <!-- Viñeta para mantener alto contraste en el texto -->
-    <div class="vignette" aria-hidden="true"></div>
-
-    <!-- Contenido principal flotando en la escena -->
-    <div class="container hero-content" data-depth="0.25">
-      <span class="badge">Versión 0.0.3-InDev</span>
-      <h1>Null</h1>
-      <p class="subtitle">
-        Una experiencia atmosférica desarrollada por <strong>NexodeStudios, Inc.</strong>
-        Explora lo que ocurre bajo la superficie.
-      </p>
-      <div class="actions">
-        <a class="btn primary" href="#descargar">Ir a descarga</a>
-        <a class="btn secondary" href="https://nexodestudio.itch.io/null-0" target="_blank" rel="noopener noreferrer">
-          Página en itch.io
-        </a>
-      </div>
-    </div>
-  </main>
-
-  <section id="sobre" class="section container">
-    <article class="card">
-      <h2>Sobre Null</h2>
-      <p>
-        Aquí puedes escribir la premisa del juego, mecánicas principales y novedades
-        de esta compilación en desarrollo.
-      </p>
-    </article>
-  </section>
-
-  <section id="descargar" class="section container">
-    <article class="card">
-      <h2>Descargas y compilaciones</h2>
-      <p>
-        Descarga el juego desde itch.io o publica tus instaladores y paquetes en
-        las releases de tu repositorio para mantener la web ligera.
-      </p>
-      <a class="btn primary" href="https://nexodestudio.itch.io/null-0" target="_blank" rel="noopener noreferrer">
-        Descargar en itch.io
-      </a>
-    </article>
-  </section>
-
-  <footer class="footer container">
-    <p>
-      NexodeStudios, Inc. ·
-      <a href="https://nexodestudio.github.io">Inicio del estudio</a>
-    </p>
-  </footer>
-
+  <canvas id="glcanvas"></canvas>
   <script src="./script.js"></script>
 </body>
 </html>
